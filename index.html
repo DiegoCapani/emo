@@ -5,8 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EMO - Specchio dell'Anima</title>
     
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.4/camera_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4/face_mesh.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
 
     <style>
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #050505; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; }
@@ -14,8 +13,8 @@
         video { display: none; }
         
         /* Interfaccia Utente Museale */
-        #ui-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 10; background: rgba(5,5,5,0.85); transition: all 0.8s ease; }
-        #startBtn { padding: 20px 50px; font-size: 20px; font-weight: 300; letter-spacing: 4px; color: #ffffff; background: transparent; border: 1px solid rgba(255,255,255,0.4); cursor: pointer; transition: all 0.4s; border-radius: 4px; box-shadow: 0 0 20px rgba(255,255,255,0.05); }
+        #ui-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 10; background: rgba(5,5,5,0.9); transition: all 0.8s ease; }
+        #startBtn { padding: 20px 50px; font-size: 20px; font-weight: 300; letter-spacing: 4px; color: #ffffff; background: transparent; border: 1px solid rgba(255,255,255,0.4); cursor: pointer; transition: all 0.4s; border-radius: 4px; }
         #startBtn:hover { background: #ffffff; color: #000000; box-shadow: 0 0 30px rgba(255,255,255,0.2); }
         #status { margin-top: 20px; color: rgba(255,255,255,0.4); font-size: 14px; letter-spacing: 2px; text-transform: uppercase; text-align: center; max-width: 80%; }
     </style>
@@ -24,10 +23,10 @@
 
 <div id="ui-overlay">
     <button id="startBtn">INIZIA ESPERIENZA</button>
-    <div id="status">Caricamento sistemi IA...</div>
+    <div id="status">Inizializzazione sistema IA...</div>
 </div>
 
-<video id="video" playsinline></video>
+<video id="video" autoplay playsinline muted></video>
 <canvas id="canvas"></canvas>
 
 <script>
@@ -40,51 +39,64 @@
 
     let particles = [];
     let audioCtx, oscillator, filter, gainNode;
-    let currentEmotion = { hue: 200, speed: 1, size: 5, tone: 220, force: 0.1 };
+    let currentEmotion = { hue: 160, speed: 2, size: 3, tone: 220, force: 0.05 };
 
-    // 1. Inizializzazione Canvas Responsivo
+    // 1. Gestione Canvas Responsivo
     function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
     window.onresize = resize;
     resize();
 
-    // 2. Setup dell'Intelligenza Artificiale (FaceMesh)
-    const faceMesh = new FaceMesh({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4/${file}`});
-    faceMesh.setOptions({ maxNumFaces: 1, refineLandmarks: true, minDetectionConfidence: 0.6, minTrackingConfidence: 0.6 });
+    // 2. Setup del Modello FaceMesh (Caricamento asset core da CDN)
+    const faceMesh = new FaceMesh({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`});
+    faceMesh.setOptions({ maxNumFaces: 1, refineLandmarks: true, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
     faceMesh.onResults(onResults);
 
-    // Segnala quando l'IA è pronta in background
-    statusText.innerText = "Sistemi pronti. Clicca per attivare audio, telecamera e arte visiva.";
+    statusText.innerText = "Pronto. Clicca per attivare la postazione.";
 
-    // 3. Funzione di attivazione al Click (Sblocca Restrizioni Browser)
+    // 3. Attivazione al Click dell'Utente
     startBtn.onclick = async () => {
-        statusText.innerText = "Inizializzazione telecamera...";
+        statusText.innerText = "Richiesta accesso alla telecamera...";
         try {
-            // Inizializza Audio Procedurale Nativo
+            // Setup Audio Nativo
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             setupAudio();
 
-            // Configura il Lifecycle della Telecamera tramite l'aiutante di MediaPipe
-            const camera = new Camera(video, {
-                onFrame: async () => { await faceMesh.send({image: video}); },
-                width: 640, height: 480
+            // Attivazione nativa della Webcam senza librerie esterne
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" } 
             });
+            video.srcObject = stream;
             
-            await camera.start();
-            
-            // Dissolvenza dell'interfaccia di avvio
-            uiOverlay.style.opacity = '0';
-            setTimeout(() => uiOverlay.style.display = 'none', 800);
-            
-            // Avvia il loop di rendering dell'arte
-            drawLoop();
+            // Quando il video riceve i dati, avvia l'esperienza
+            video.onloadedmetadata = () => {
+                video.play();
+                uiOverlay.style.opacity = '0';
+                setTimeout(() => uiOverlay.style.display = 'none', 800);
+                
+                // Avvio dei due loop paralleli (Logica IA e Grafica Generativa)
+                cameraLoop();
+                drawLoop();
+            };
         } catch (err) {
             statusText.style.color = "#ff4444";
-            statusText.innerText = `ERRORE: ${err.message}. Assicurati di aver concesso i permessi e di usare HTTPS.`;
-            console.error(err);
+            statusText.innerText = `ERRORE: ${err.message}. Controlla i permessi del browser o assicurati di essere su un sito HTTPS sicuro.`;
         }
     };
 
-    // 4. Sintetizzatore Audio Spaziale/Emotivo
+    // 4. Loop di cattura e invio frame all'IA (Sostituisce il vecchio "Camera")
+    async function cameraLoop() {
+        if (video.readyState === 4) { // 4 = HAVE_ENOUGH_DATA
+            try {
+                await faceMesh.send({ image: video });
+            } catch (e) {
+                console.error("Errore elaborazione frame IA:", e);
+            }
+        }
+        // Richiede il prossimo frame non appena il browser è pronto, mantenendo alti gli FPS
+        requestAnimationFrame(cameraLoop);
+    }
+
+    // 5. Sintetizzatore Audio Procedurale Nativo
     function setupAudio() {
         oscillator = audioCtx.createOscillator();
         filter = audioCtx.createBiquadFilter();
@@ -92,11 +104,8 @@
 
         oscillator.type = 'sine';
         oscillator.frequency.setValueAtTime(220, audioCtx.currentTime);
-        
         filter.type = 'lowpass';
-        filter.Q.setValueAtTime(1, audioCtx.currentTime);
-
-        gainNode.gain.setValueAtTime(0.05, audioCtx.currentTime); // Volume basso e sicuro per installazioni
+        gainNode.gain.setValueAtTime(0.04, audioCtx.currentTime); 
 
         oscillator.connect(filter);
         filter.connect(gainNode);
@@ -104,44 +113,44 @@
         oscillator.start();
     }
 
-    // 5. Analisi delle Micro-Espressioni e Traduzione Artistica
+    // 6. Analisi dei Punti Facciali e Classificazione Emozioni
     function onResults(results) {
         if (!results.multiFaceLandmarks || results.multiFaceLandmarks.length === 0) return;
         
         const lm = results.multiFaceLandmarks[0];
 
-        // Estrazione metriche vettoriali cruciali (Normalizzate)
+        // Calcolo delle distanze relative dei punti chiave del viso
         const mouthOpen = Math.abs(lm[13].y - lm[14].y) * 100;
         const mouthWidth = Math.abs(lm[61].x - lm[291].x) * 100;
         const eyeOpen = (Math.abs(lm[159].y - lm[145].y) + Math.abs(lm[386].y - lm[374].y)) * 50;
         const browDistance = Math.abs(lm[55].x - lm[285].x) * 100;
 
-        // Logica di classificazione fluida per l'arte
+        // Mappatura degli stati d'animo
         if (mouthWidth > 16.5 && eyeOpen > 2.5) { 
-            // FELICITÀ: Colori caldi/dorati, movimenti rapidi, suono armonico alto
-            currentEmotion = { hue: 45, speed: 5, size: 8, tone: 440, force: 0.3 };
-        } else if (browDistance < 18 && mouthOpen > 2) { 
-            // IRA / TENSIONE: Rosso intenso, disordine geometrico, suono distorto/basso
-            currentEmotion = { hue: 0, speed: 12, size: 12, tone: 110, force: 0.8 };
-        } else if (mouthOpen > 6) { 
-            // SORPRESA / VITALITÀ: Fucsia, esplosioni di particelle, suono acuto
-            currentEmotion = { hue: 300, speed: 8, size: 4, tone: 587, force: 0.5 };
-        } else if (mouthWidth < 14) { 
-            // TRISTEZZA: Blu profondo, movimenti fluidi e cadenti verso il basso, drone sonoro lento
-            currentEmotion = { hue: 220, speed: 1.5, size: 6, tone: 165, force: 0.1 };
+            // FELICITÀ
+            currentEmotion = { hue: 45, speed: 6, size: 7, tone: 392, force: 0.3 };
+        } else if (browDistance < 18 && mouthOpen > 1.5) { 
+            // IRA / TENSIONE
+            currentEmotion = { hue: 0, speed: 12, size: 10, tone: 110, force: 0.7 };
+        } else if (mouthOpen > 5) { 
+            // SORPRESA
+            currentEmotion = { hue: 300, speed: 9, size: 4, tone: 523, force: 0.5 };
+        } else if (mouthWidth < 13.8) { 
+            // TRISTEZZA
+            currentEmotion = { hue: 210, speed: 1.5, size: 5, tone: 130, force: 0.1 };
         } else { 
-            // CALMA / NOIA: Sfumature ciano/verdi, onde stabili e rilassanti
-            currentEmotion = { hue: 160, speed: 2, size: 3, tone: 220, force: 0.05 };
+            // CALMA / NOIA
+            currentEmotion = { hue: 160, speed: 2, size: 3, tone: 196, force: 0.05 };
         }
 
-        // Modulazione Audio in Tempo Reale (Interpolata per morbidezza uditiva)
+        // Modulazione audio in tempo reale basata sui dati reali
         if (audioCtx) {
-            oscillator.frequency.setTargetAtTime(currentEmotion.tone + (mouthOpen * 20), audioCtx.currentTime, 0.1);
-            filter.frequency.setTargetAtTime(400 + (eyeOpen * 300), audioCtx.currentTime, 0.1);
+            oscillator.frequency.setTargetAtTime(currentEmotion.tone + (mouthOpen * 15), audioCtx.currentTime, 0.1);
+            filter.frequency.setTargetAtTime(300 + (eyeOpen * 400), audioCtx.currentTime, 0.1);
         }
 
-        // Generazione particelle artistiche sul centro del volto rilevato
-        const faceX = (1 - lm[1].x) * canvas.width; // Specchiato per naturalezza d'uso
+        // Generazione particelle (Inversione asse X per effetto specchio)
+        const faceX = (1 - lm[1].x) * canvas.width;
         const faceY = lm[1].y * canvas.height;
         
         for (let i = 0; i < Math.floor(currentEmotion.speed / 2) + 1; i++) {
@@ -149,33 +158,31 @@
                 x: faceX,
                 y: faceY,
                 vx: (Math.random() - 0.5) * currentEmotion.speed * 2,
-                vy: (Math.random() - 0.5) * currentEmotion.speed * 2 - (currentEmotion.hue === 220 ? -2 : 0), // Scendono se triste
+                vy: (Math.random() - 0.5) * currentEmotion.speed * 2 - (currentEmotion.hue === 210 ? -1.5 : 0),
                 alpha: 1,
                 size: Math.random() * currentEmotion.size + 2,
-                hue: currentEmotion.hue + (Math.random() * 20 - 10)
+                hue: currentEmotion.hue + (Math.random() * 16 - 8)
             });
         }
     }
 
-    // 6. Generatore Grafico ad Alte Prestazioni (Canvas 2D Organico)
+    // 7. Loop di Rendering dell'Arte Visiva (Canvas 60 FPS)
     function drawLoop() {
-        // L'effetto scia trasparente crea un senso di fluidità cinematografica/pittorica
-        ctx.fillStyle = 'rgba(5, 5, 5, 0.08)';
+        ctx.fillStyle = 'rgba(5, 5, 5, 0.08)'; // Effetto scia pittorico
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
         for (let i = particles.length - 1; i >= 0; i--) {
             let p = particles[i];
             p.x += p.vx;
             p.y += p.vy;
-            p.alpha -= 0.01; // Dissolvenza graduale
+            p.alpha -= 0.012;
 
             if (p.alpha <= 0) {
                 particles.splice(i, 1);
                 continue;
             }
 
-            // Disegno della forma artistica (Neon Glow effect nativo)
-            ctx.shadowBlur = currentEmotion.force * 15;
+            ctx.shadowBlur = currentEmotion.force * 12;
             ctx.shadowColor = `hsl(${p.hue}, 100%, 50%)`;
             ctx.fillStyle = `hsla(${p.hue}, 100%, 50%, ${p.alpha})`;
             
@@ -184,7 +191,7 @@
             ctx.fill();
         }
         
-        ctx.shadowBlur = 0; // Reset delle ombre per massimizzare gli FPS
+        ctx.shadowBlur = 0; 
         requestAnimationFrame(drawLoop);
     }
 </script>
