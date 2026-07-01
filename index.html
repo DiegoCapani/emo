@@ -1,6 +1,20 @@
 <!DOCTYPE html>
 <html>
-<body style="margin:0; overflow:hidden; background:black;">
+<body style="margin:0; overflow:hidden; background:black; font-family: sans-serif;">
+
+<button id="startBtn" style="
+    position: absolute; 
+    top: 50%; left: 50%; 
+    transform: translate(-50%, -50%);
+    padding: 20px 40px; 
+    font-size: 24px; 
+    background: white; 
+    border: none; 
+    cursor: pointer; 
+    z-index: 10;">
+    EMO START
+</button>
+
 <video id="video" style="display:none" autoplay playsinline></video>
 <canvas id="canvas"></canvas>
 
@@ -10,26 +24,34 @@ import { FaceMesh } from 'https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh';
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 const video = document.getElementById('video');
-let particles = [];
+const startBtn = document.getElementById('startBtn');
 
-// Inizializzazione Video
-navigator.mediaDevices.getUserMedia({ video: true }).then(s => video.srcObject = s);
-
-// Motore FaceMesh
+// Configurazione FaceMesh
 const faceMesh = new FaceMesh({locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${f}`});
 faceMesh.setOptions({ maxNumFaces: 1, refineLandmarks: true });
 faceMesh.onResults(onResults);
 
+// Funzione avvio webcam
+startBtn.onclick = async () => {
+    startBtn.style.display = 'none'; // Nascondi il bottone
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        video.srcObject = stream;
+        video.play();
+        requestAnimationFrame(frame);
+    } catch (err) {
+        alert("Errore: Accesso alla webcam negato o non disponibile.");
+    }
+};
+
 function onResults(results) {
-    ctx.fillStyle = 'rgba(0,0,0,0.1)'; // Effetto scia
+    ctx.fillStyle = 'rgba(0,0,0,0.1)'; 
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     
     if (results.multiFaceLandmarks.length > 0) {
         const lm = results.multiFaceLandmarks[0];
-        // Calcolo umore semplice: distanza bocca (y) e altezza occhi (y)
         const mouth = Math.abs(lm[13].y - lm[14].y) * 50;
         const eyes = Math.abs(lm[159].y - lm[145].y) * 100;
-        
         drawArt(mouth, eyes);
     }
 }
@@ -51,7 +73,6 @@ async function frame() {
     if(video.readyState === 4) await faceMesh.send({image: video});
     requestAnimationFrame(frame);
 }
-frame();
 </script>
 </body>
 </html>
