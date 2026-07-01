@@ -1,0 +1,253 @@
+Ho capito l'obiettivo: avevamo spento troppo i motori. Il limite delle onde sinusoidali pure è che, essendo prive di armoniche, i filtri non hanno "materia" da tagliare e le variazioni diventano quasi impercettibili all'orecchio.
+
+Ho creato il **compromesso perfetto**:
+
+1. **Il Timbro Energetico ma Pulito:** Ho sostituito il sintetizzatore con un'**onda a triangolo (`triangle`)**. Ha la stessa morbidezza della sinusoide ma possiede calde armoniche naturali. Questo ci permette di alzare la risonanza del filtro a un valore intermedio ($Q = 7.5$). Ora sentirai nettamente i cambi di espressione (l'effetto "Swell/Apertura"), ma il suono rimarrà vellutato, cinematografico e mai stridente o fastidioso.
+2. **Escursione Amplificata:** Ho raddoppiato i moltiplicatori matematici. Ora bastano micro-variazioni del viso per generare risposte acustiche chiare e gratificanti.
+3. **Tracciamento del Naso:** Ho inserito nel core grafico (`CYBER_MAP`) i nodi biomeccanici del setto nasale, della punta e delle narici (`6, 168, 197, 4, 2, 98, 327`), ancorando la costellazione visiva al centro del volto.
+
+Ecco il codice definitivo, ottimizzato sia per la reattività acustica che per il caricamento online (HTTPS):
+
+```html
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EMO - Hybrid Biometric Core</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #020205; font-family: 'Helvetica Neue', Arial, sans-serif; }
+        canvas { display: block; width: 100%; height: 100%; }
+        video { display: none; }
+        
+        #ui-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 10; background: radial-gradient(circle, rgba(10,15,30,0.98) 0%, rgba(2,2,5,1) 100%); transition: all 1s ease; }
+        #startBtn { padding: 22px 55px; font-size: 16px; font-weight: 300; color: #00e5ff; background: transparent; border: 1px solid rgba(0,229,255,0.4); cursor: pointer; transition: all 0.4s ease; letter-spacing: 6px; border-radius: 50px; text-transform: uppercase; }
+        #startBtn:hover { background: rgba(0,229,255,0.1); border-color: #00e5ff; box-shadow: 0 0 35px rgba(0,229,255,0.25); }
+        #status { margin-top: 30px; color: rgba(0, 229, 255, 0.4); font-size: 11px; letter-spacing: 4px; text-transform: uppercase; text-align: center; }
+    </style>
+</head>
+<body>
+
+<div id="ui-overlay">
+    <button id="startBtn">CONNETTI MATRICE IBRIDA</button>
+    <div id="status">SISTEMA PRONTO // PROTOCOLLO AUDIO BILANCIATO</div>
+</div>
+
+<video id="video" autoplay playsinline muted></video>
+<canvas id="canvas"></canvas>
+
+<script>
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const uiOverlay = document.getElementById('ui-overlay');
+    const startBtn = document.getElementById('startBtn');
+    const statusText = document.getElementById('status');
+
+    let dataNodes = [];
+    let audioCtx, masterGain, carrierOsc, modulatorOsc, modGain, filterNode, delayNode, feedbackGain;
+    
+    // Configurazione iniziale bilanciata
+    let currentStyle = { hue: 195, lineDensity: 42, baseFreq: 180, modFreq: 2, modGain: 15, filterFreq: 1000 };
+    let targetStyle = { hue: 195, lineDensity: 42, baseFreq: 180, modFreq: 2, modGain: 15, filterFreq: 1000 };
+
+    // Mappatura Visiva Completa: Ora include la struttura geometrica centrale del NASO
+    const CYBER_MAP = [
+        10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162, // Ovale esterno
+        33, 160, 158, 133, 153, 144, 362, 385, 387, 263, 373, 380, // Occhi
+        70, 63, 105, 66, 107, 336, 296, 334, 293, 300, // Sopracciglia
+        61, 146, 91, 181, 84, 17, 314, 405, 321, 375, 291, 308, 324, 318, 402, 317, 14, 87, 178, 88, 95, // Labbra
+        50, 117, 118, 123, 147, 280, 346, 347, 352, 376, // Zigomi
+        6, 168, 197, 4, 2, 98, 327 // <<< NUOVI LANDMARKS: Struttura e linee del Naso
+    ];
+
+    function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+    window.onresize = resize;
+    resize();
+
+    const faceMesh = new FaceMesh({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}` });
+    faceMesh.setOptions({ maxNumFaces: 1, refineLandmarks: true, minDetectionConfidence: 0.6, minTrackingConfidence: 0.6 });
+    faceMesh.onResults(onHybridBiometrics);
+
+    startBtn.onclick = async () => {
+        if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+            statusText.style.color = "#ff3366";
+            statusText.innerHTML = "ERRORE: La fotocamera online richiede una connessione protetta HTTPS.";
+            return;
+        }
+
+        statusText.innerText = "ACCENSIONE SINTETIZZATORE INTEGRATO...";
+        try {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') await audioCtx.resume();
+            setupHybridSynth();
+
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" } 
+            });
+            video.srcObject = stream;
+            
+            video.onloadedmetadata = () => {
+                video.play();
+                uiOverlay.style.opacity = '0';
+                setTimeout(() => uiOverlay.style.display = 'none', 1000);
+                cameraProcessingLoop();
+                renderCyberSpace();
+            };
+        } catch (err) {
+            statusText.style.color = "#ff3366";
+            statusText.innerText = `ERRORE ATTIVAZIONE: ${err.message.toUpperCase()}`;
+        }
+    };
+
+    async function cameraProcessingLoop() {
+        if (video.readyState === 4) await faceMesh.send({ image: video });
+        requestAnimationFrame(cameraProcessingLoop);
+    }
+
+    // --- ARCHITETTURA AUDIO IBRIDA (Compromesso Reattività / Morbidezza) ---
+    function setupHybridSynth() {
+        carrierOsc = audioCtx.createOscillator();
+        modulatorOsc = audioCtx.createOscillator();
+        modGain = audioCtx.createGain();
+        filterNode = audioCtx.createBiquadFilter();
+        masterGain = audioCtx.createGain();
+        delayNode = audioCtx.createDelay();
+        feedbackGain = audioCtx.createGain();
+
+        // Onde Triangolari: Armoniche calde perfette per far risaltare l'azione dei filtri senza distorcere
+        carrierOsc.type = 'triangle'; 
+        modulatorOsc.type = 'sine';
+        
+        // Risonanza calibrata a 7.5: Crea un effetto "Swell/Chisura" avvolgente e chiaramente distinguibile
+        filterNode.type = 'lowpass';
+        filterNode.Q.setValueAtTime(7.5, audioCtx.currentTime); 
+
+        delayNode.delayTime.value = 0.45; 
+        feedbackGain.gain.value = 0.45;  
+        masterGain.gain.setValueAtTime(0.09, audioCtx.currentTime); // Volume ottimizzato
+
+        modulatorOsc.connect(modGain);
+        modGain.connect(carrierOsc.frequency);
+        carrierOsc.connect(filterNode);
+        filterNode.connect(masterGain);
+        
+        masterGain.connect(audioCtx.destination);
+        masterGain.connect(delayNode);
+        delayNode.connect(feedbackGain);
+        feedbackGain.connect(delayNode);
+        delayNode.connect(audioCtx.destination);
+
+        carrierOsc.start();
+        modulatorOsc.start();
+    }
+
+    // --- ALGORITMO DI AGGANCIO BIOMETRICO AMPLIFICATO ---
+    function onHybridBiometrics(results) {
+        if (!results.multiFaceLandmarks || results.multiFaceLandmarks.length === 0) return;
+        
+        const lm = results.multiFaceLandmarks[0];
+
+        // 1. Estrazione Distanze Facciali
+        const eyeLeft = Math.abs(lm[159].y - lm[145].y);
+        const eyeRight = Math.abs(lm[386].y - lm[374].y);
+        const eyeFactor = Math.min(Math.max(((eyeLeft + eyeRight) / 2 - 0.012) / 0.018, 0), 1); // Range ottimizzato per battito/apertura occhi
+
+        const mouthOpen = Math.abs(lm[13].y - lm[14].y);
+        const mouthWidth = Math.abs(lm[61].x - lm[291].x);
+        const jawFactor = Math.min(Math.max(mouthOpen / 0.07, 0), 1);
+        const smileFactor = Math.min(Math.max((mouthWidth - 0.12) / 0.05, 0), 1);
+
+        const browDist = Math.abs(lm[55].x - lm[285].x);
+        const browHeight = Math.abs(lm[70].y - lm[159].y);
+        const frownFactor = Math.min(Math.max((0.21 - browDist) / 0.04, 0), 1); 
+        const liftFactor = Math.min(Math.max((browHeight - 0.04) / 0.025, 0), 1);   
+
+        const leftCheekLift = Math.abs(lm[145].y - lm[50].y);
+        const rightCheekLift = Math.abs(lm[374].y - lm[280].y);
+        const cheekFactor = Math.min(Math.max((0.085 - ((leftCheekLift + rightCheekLift) / 2)) / 0.02, 0), 1);
+
+        // 2. BILANCIAMENTO DEL COMPARTO ACUSTICO (Variazioni Evidenti ma Armoniche)
+        // Pitch Fondamentale: Salta chiaramente di frequenza con il sorriso o lo sgranare degli occhi
+        targetStyle.baseFreq = 160 + (smileFactor * 160) + (eyeFactor * 80) - (frownFactor * 45);
+        
+        // Frequenza Modulante (Vibrato Biometrico): Accelera nettamente muovendo occhi e sopracciglia
+        targetStyle.modFreq = 1.5 + (eyeFactor * 14) + (liftFactor * 8);
+        
+        // Profondità di Modulazione (Timbro): Diventa più "pieno" e presente se contrai le sopracciglia o gli zigomi
+        targetStyle.modGain = 5 + (frownFactor * 85) + (cheekFactor * 40) + (jawFactor * 30);
+        
+        // Il Filtro Principale (L'effetto Wah Cinematico): Moltiplicatori aumentati a 2600Hz.
+        // Aprire gli occhi o la bocca spalanca lo spettro sonoro illuminandolo istantaneamente. Chiuderli rende tutto ovattato.
+        targetStyle.filterFreq = 350 + (eyeFactor * 1800) + (jawFactor * 1200) + (smileFactor * 400) - (frownFactor * 150);
+
+        // 3. LOGICA CROMATICA FLUIDA
+        let baseHue = 195; 
+        if (smileFactor > 0.05) baseHue = baseHue * (1 - smileFactor) + 150 * smileFactor; 
+        if (cheekFactor > 0.1) baseHue = baseHue * (1 - cheekFactor) + 40 * cheekFactor;   
+        if (frownFactor > 0.05) baseHue = baseHue * (1 - frownFactor) + 240 * frownFactor; 
+        targetStyle.hue = baseHue;
+        targetStyle.lineDensity = 32 + (eyeFactor * 25) + (cheekFactor * 15) + (jawFactor * 15);
+
+        dataNodes = CYBER_MAP.map(index => {
+            return { x: (1 - lm[index].x) * canvas.width, y: lm[index].y * canvas.height };
+        });
+    }
+
+    function renderCyberSpace() {
+        ctx.fillStyle = 'rgba(2, 2, 5, 0.09)'; // Dissolvenza morbida delle linee
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // LERP a 0.08: Garantisce cambi immediati all'orecchio eliminando qualsiasi scatto digitale brusco
+        currentStyle.hue += (targetStyle.hue - currentStyle.hue) * 0.06;
+        currentStyle.lineDensity += (targetStyle.lineDensity - currentStyle.lineDensity) * 0.06;
+        
+        currentStyle.baseFreq += (targetStyle.baseFreq - currentStyle.baseFreq) * 0.08;
+        currentStyle.modFreq += (targetStyle.modFreq - currentStyle.modFreq) * 0.08;
+        currentStyle.modGain += (targetStyle.modGain - currentStyle.modGain) * 0.08;
+        currentStyle.filterFreq += (targetStyle.filterFreq - currentStyle.filterFreq) * 0.08;
+
+        if (audioCtx && carrierOsc) {
+            carrierOsc.frequency.setTargetAtTime(currentStyle.baseFreq, audioCtx.currentTime, 0.03);
+            modulatorOsc.frequency.setTargetAtTime(currentStyle.modFreq, audioCtx.currentTime, 0.03);
+            modGain.gain.setTargetAtTime(currentStyle.modGain, audioCtx.currentTime, 0.03);
+            filterNode.frequency.setTargetAtTime(currentStyle.filterFreq, audioCtx.currentTime, 0.03);
+        }
+
+        const nodesLength = dataNodes.length;
+
+        if (nodesLength > 0) {
+            ctx.lineWidth = 0.6;
+            for (let i = 0; i < nodesLength; i++) {
+                for (let j = i + 1; j < nodesLength; j++) {
+                    let dist = Math.hypot(dataNodes[i].x - dataNodes[j].x, dataNodes[i].y - dataNodes[j].y);
+                    
+                    if (dist < currentStyle.lineDensity) {
+                        let opacity = (1 - (dist / currentStyle.lineDensity)) * 0.25;
+                        ctx.strokeStyle = `hsla(${currentStyle.hue}, 90%, 65%, ${opacity})`;
+                        ctx.beginPath();
+                        ctx.moveTo(dataNodes[i].x, dataNodes[j].y);
+                        ctx.lineTo(dataNodes[j].x, dataNodes[i].y);
+                        ctx.stroke();
+                    }
+                }
+            }
+
+            for (let i = 0; i < nodesLength; i++) {
+                ctx.fillStyle = `hsla(${currentStyle.hue}, 100%, 75%, 0.55)`;
+                ctx.beginPath();
+                ctx.arc(dataNodes[i].x, dataNodes[i].y, 1, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        requestAnimationFrame(renderCyberSpace);
+    }
+</script>
+</body>
+</html>
+
+```
