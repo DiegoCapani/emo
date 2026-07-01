@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EMO - Micro-Reactive Quantum Mirror</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #010103; font-family: 'Courier New', Courier, monospace; }
+        canvas { display: block; width: 100%; height: 100%; }
+        video { display: none; }
+        
+        #ui-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 10; background: radial-gradient(circle, rgba(5,10,25,0.95) 0%, rgba(1,1,3,1) 100%); transition: all 1s ease; }
+        #startBtn { padding: 25px 60px; font-size: 18px; font-weight: bold; color: #00ffcc; background: transparent; border: 2px solid #00ffcc; cursor: pointer; transition: all 0.3s ease; letter-spacing: 6px; box-shadow: 0 0 15px rgba(0,255,204,0.2); }
+        #startBtn:hover { background: #00ffcc; color: #020204; box-shadow: 0 0 40px rgba(0,255,204,0.6); }
+        #status { margin-top: 30px; color: rgba(0, 255, 204, 0.5); font-size: 12px; letter-spacing: 3px; text-transform: uppercase; text-align: center; }
+        .scan-line { width: 200px; height: 2px; background: #00ffcc; position: absolute; animation: scan 2s linear infinite; opacity: 0.3; }
+        @keyframes scan { 0% { top: 30%; } 50% { top: 70%; } 100% { top: 30%; } }
+    </style>
+</head>
+<body>
+
+<div id="ui-overlay">
+    <div class="scan-line"></div>
+    <button id="startBtn">ENGAGE BIOMETRIC LINK</button>
+    <div id="status">SYS_STATUS: MICROSENSORS CALIBRATED // AWAITING USER</div>
+</div>
+
+<video id="video" autoplay playsinline muted></video>
+<canvas id="canvas"></canvas>
+
+<script>
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const uiOverlay = document.getElementById('ui-overlay');
+    const startBtn = document.getElementById('startBtn');
+    const statusText = document.getElementById('status');
+
+    let dataNodes = [];
+    let audioCtx, masterGain, carrierOsc, modulatorOsc, modGain, delayNode, feedbackGain;
+    
+    // Parametri dinamici attuali (Stato corrente del sistema, fluttua continuamente)
+    let currentStyle = { hue: 180, lineDensity: 45, glitchChance: 0.01, baseFreq: 150, noiseLevel: 10 };
+    // Parametri target inviati in tempo reale dall'IA
+    let targetStyle = { hue: 180, lineDensity: 45, glitchChance: 0.01, baseFreq: 150, noiseLevel: 10 };
+
+    // Griglia cibernetica di landmark facciali selezionati
+    const CYBER_MAP = [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109, 33, 160, 158, 133, 153, 144, 362, 385, 387, 263, 373, 380, 78, 95, 88, 178, 87, 14, 317, 402, 318, 324, 308];
+
+    function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+    window.onresize = resize;
+    resize();
+
+    const faceMesh = new FaceMesh({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`});
+    faceMesh.setOptions({ maxNumFaces: 1, refineLandmarks: true, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
+    faceMesh.onResults(onMicroNeuralResults);
+
+    startBtn.onclick = async () => {
+        statusText.innerText = "CONNECTING BIOMETRIC FEED...";
+        try {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') await audioCtx.resume();
+            setupCyberSynth();
+
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" } 
+            });
+            video.srcObject = stream;
+            
+            video.onloadedmetadata = () => {
+                video.play();
+                uiOverlay.style.opacity = '0';
+                setTimeout(() => uiOverlay.style.display = 'none', 1000);
+                
+                cameraProcessingLoop();
+                renderCyberSpace();
+            };
+        } catch (err) {
+            statusText.style.color = "#ff3366";
+            statusText.innerText = `LINK_FAILED: ${err.message.toUpperCase()}`;
+        }
+    };
+
+    async function cameraProcessingLoop() {
+        if (video.readyState === 4) await faceMesh.send({ image: video });
+        requestAnimationFrame(cameraProcessingLoop);
+    }
+
+    function setupCyberSynth() {
+        carrierOsc = audioCtx.createOscillator();
+        modulatorOsc = audioCtx.createOscillator();
+        modGain = audioCtx.createGain();
+        masterGain = audioCtx.createGain();
+        delayNode = audioCtx.createDelay();
+        feedbackGain = audioCtx.createGain();
+        const filter = audioCtx.createBiquadFilter();
+
+        carrierOsc.type = 'triangle';
+        modulatorOsc.type = 'sawtooth';
+        
+        carrierOsc.frequency.setValueAtTime(150, audioCtx.currentTime);
+        modulatorOsc.frequency.setValueAtTime(6, audioCtx.currentTime);
+        modGain.gain.setValueAtTime(20, audioCtx.currentTime);
+        
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(900, audioCtx.currentTime);
+
+        delayNode.delayTime.value = 0.35; 
+        feedbackGain.gain.value = 0.45;   
+        masterGain.gain.setValueAtTime(0.12, audioCtx.currentTime); 
+
+        modulatorOsc.connect(modGain);
+        modGain.connect(carrierOsc.frequency);
+        carrierOsc.connect(filter);
+        filter.connect(masterGain);
+        
+        masterGain.connect(audioCtx.destination);
+        masterGain.connect(delayNode);
+        delayNode.connect(feedbackGain);
+        feedbackGain.connect(delayNode);
+        delayNode.connect(audioCtx.destination);
+
+        carrierOsc.start();
+        modulatorOsc.start();
+    }
+
+    // --- LOGICA DELLE MICRO-ESPRESSIONI (Mappatura Parametrica Continua) ---
+    function onMicroNeuralResults(results) {
+        if (!results.multiFaceLandmarks || results.multiFaceLandmarks.length === 0) return;
+        
+        const lm = results.multiFaceLandmarks[0];
+
+        // 1. Estrazione distanze anatomiche grezze
+        const dMouthOpen = Math.abs(lm[13].y - lm[14].y);
+        const dMouthWidth = Math.abs(lm[61].x - lm[291].x);
+        const dEyeLeft = Math.abs(lm[159].y - lm[145].y);
+        const dEyeRight = Math.abs(lm[386].y - lm[374].y);
+        const dBrowDist = Math.abs(lm[55].x - lm[285].x);
+        const dBrowLeftHeight = Math.abs(lm[70].y - lm[159].y); // Distanza tra sopracciglio e occhio sinistro
+
+        // 2. Normalizzazione in canali di micro-movimento (valori continui distribuiti tra 0 e 1)
+        const smileFactor = Math.min(Math.max((dMouthWidth - 0.12) / 0.06, 0), 1); 
+        const jawFactor = Math.min(Math.max(dMouthOpen / 0.08, 0), 1);
+        const frownFactor = Math.min(Math.max((0.21 - dBrowDist) / 0.05, 0), 1); // Più sono vicine, più tende a 1 (tensione/rabbia)
+        const surpriseFactor = Math.min(Math.max((dBrowLeftHeight - 0.04) / 0.03, 0), 1); // Sopracciglia alzate
+
+        // 3. Generazione Dinamica degli Stati tramite Interpolazione Matematica Cruciale
+        // Il colore (HUE) si sposta fluidamente nello spettro in base alle micro-tensioni
+        // Calma (Ciano: 160) -> Sorriso (Oro: 50) -> Rabbia (Rosso: 0) -> Sorpresa (Magenta: 300) -> Tristezza (Blu: 220)
+        let baseHue = 160; 
+        if (smileFactor > 0.1) baseHue = baseHue * (1 - smileFactor) + 45 * smileFactor;
+        if (frownFactor > 0.1) baseHue = baseHue * (1 - frownFactor) + 0 * frownFactor;
+        if (surpriseFactor > 0.2) baseHue = baseHue * (1 - surpriseFactor) + 300 * surpriseFactor;
+        
+        targetStyle.hue = baseHue;
+
+        // Densità delle linee della rete: aumenta con l'apertura degli occhi o della bocca
+        targetStyle.lineDensity = 30 + (jawFactor * 70) + (surpriseFactor * 40);
+
+        // Glitch chance: risponde istantaneamente ai micro-scatti nervosi o al corrugamento
+        targetStyle.glitchChance = 0.005 + (frownFactor * 0.15) + (jawFactor * 0.05);
+
+        // Modulazione Frequenze Audio: ogni millimetro cambia la nota e l'aggressività del sintetizzatore
+        targetStyle.baseFreq = 130 + (smileFactor * 120) - (frownFactor * 50) + (surpriseFactor * 150);
+        targetStyle.noiseLevel = 5 + (frownFactor * 60) + (jawFactor * 30);
+
+        // Mappatura dei nodi sullo schermo
+        dataNodes = CYBER_MAP.map(index => {
+            return { x: (1 - lm[index].x) * canvas.width, y: lm[index].y * canvas.height };
+        });
+    }
+
+    // Interfaccia e Rendering ad alte prestazioni
+    function renderCyberSpace() {
+        ctx.fillStyle = 'rgba(1, 1, 3, 0.15)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // --- LERP (Linear Interpolation) ---
+        // Questo è il segreto matematico: i parametri attuali inseguono i parametri target 
+        // al 10% per frame. Risultato: transizioni incredibilmente fluide, organiche e zero bug visivi.
+        currentStyle.hue += (targetStyle.hue - currentStyle.hue) * 0.1;
+        currentStyle.lineDensity += (targetStyle.lineDensity - currentStyle.lineDensity) * 0.1;
+        currentStyle.glitchChance += (targetStyle.glitchChance - currentStyle.glitchChance) * 0.1;
+        currentStyle.baseFreq += (targetStyle.baseFreq - currentStyle.baseFreq) * 0.1;
+        currentStyle.noiseLevel += (targetStyle.noiseLevel - currentStyle.noiseLevel) * 0.1;
+
+        // Aggiornamento real-time dei parametri audio fluidi
+        if (audioCtx && carrierOsc) {
+            carrierOsc.frequency.setTargetAtTime(currentStyle.baseFreq, audioCtx.currentTime, 0.05);
+            modGain.gain.setTargetAtTime(currentStyle.noiseLevel * 3.5, audioCtx.currentTime, 0.05);
+        }
+
+        const nodesLength = dataNodes.length;
+
+        if (nodesLength > 0) {
+            // DISEGNO CONNESSIONI MATRICIALI CONTINUATIVE
+            ctx.lineWidth = 0.7;
+            for (let i = 0; i < nodesLength; i++) {
+                for (let j = i + 1; j < nodesLength; j++) {
+                    let dist = Math.hypot(dataNodes[i].x - dataNodes[j].x, dataNodes[i].y - dataNodes[j].y);
+                    
+                    if (dist < currentStyle.lineDensity) {
+                        let opacity = (1 - (dist / currentStyle.lineDensity)) * 0.35;
+                        ctx.strokeStyle = `hsla(${currentStyle.hue}, 100%, 55%, ${opacity})`;
+                        ctx.beginPath();
+                        ctx.moveTo(dataNodes[i].x, dataNodes[j].y);
+                        ctx.lineTo(dataNodes[j].x, dataNodes[i].y);
+                        ctx.stroke();
+                    }
+                }
+            }
+
+            // APPLICAZIONE GLITCH VISIVO MICRO-REATTIVO
+            let offsetGlitchX = 0;
+            if (Math.random() < currentStyle.glitchChance) {
+                offsetGlitchX = (Math.random() - 0.5) * (currentStyle.glitchChance * 250);
+                ctx.fillStyle = `hsla(${currentStyle.hue}, 100%, 70%, 0.2)`;
+                ctx.fillRect(0, Math.random() * canvas.height, canvas.width, Math.random() * 20);
+            }
+
+            // DISEGNO MICRODIODI QUANTISTICI
+            for (let i = 0; i < nodesLength; i++) {
+                ctx.fillStyle = `hsla(${currentStyle.hue}, 100%, 65%, 0.75)`;
+                // Se c'è un glitch in quel frame, i nodi vibrano sull'asse X in base alla tensione emotiva
+                ctx.fillRect(dataNodes[i].x - 1 + offsetGlitchX, dataNodes[i].y - 1, 2, 2);
+            }
+        }
+
+        requestAnimationFrame(renderCyberSpace);
+    }
+</script>
+</body>
+</html>
