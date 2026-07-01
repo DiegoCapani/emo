@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+<body style="margin:0; overflow:hidden; background:black;">
+<video id="video" style="display:none" autoplay playsinline></video>
+<canvas id="canvas"></canvas>
+
+<script type="module">
+import { FaceMesh } from 'https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh';
+
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const video = document.getElementById('video');
+let particles = [];
+
+// Inizializzazione Video
+navigator.mediaDevices.getUserMedia({ video: true }).then(s => video.srcObject = s);
+
+// Motore FaceMesh
+const faceMesh = new FaceMesh({locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${f}`});
+faceMesh.setOptions({ maxNumFaces: 1, refineLandmarks: true });
+faceMesh.onResults(onResults);
+
+function onResults(results) {
+    ctx.fillStyle = 'rgba(0,0,0,0.1)'; // Effetto scia
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    if (results.multiFaceLandmarks.length > 0) {
+        const lm = results.multiFaceLandmarks[0];
+        // Calcolo umore semplice: distanza bocca (y) e altezza occhi (y)
+        const mouth = Math.abs(lm[13].y - lm[14].y) * 50;
+        const eyes = Math.abs(lm[159].y - lm[145].y) * 100;
+        
+        drawArt(mouth, eyes);
+    }
+}
+
+function drawArt(m, e) {
+    ctx.fillStyle = `hsl(${e * 10}, 100%, 50%)`;
+    for(let i=0; i<m; i++) {
+        ctx.beginPath();
+        ctx.arc(Math.random()*window.innerWidth, Math.random()*window.innerHeight, e, 0, Math.PI*2);
+        ctx.fill();
+    }
+}
+
+function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+window.onresize = resize;
+resize();
+
+async function frame() {
+    if(video.readyState === 4) await faceMesh.send({image: video});
+    requestAnimationFrame(frame);
+}
+frame();
+</script>
+</body>
+</html>
