@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EMO - Ocular Quantum Core</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #010103; font-family: 'Courier New', Courier, monospace; }
+        canvas { display: block; width: 100%; height: 100%; }
+        video { display: none; }
+        
+        #ui-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 10; background: radial-gradient(circle, rgba(5,10,25,0.95) 0%, rgba(1,1,3,1) 100%); transition: all 1s ease; }
+        #startBtn { padding: 25px 60px; font-size: 18px; font-weight: bold; color: #00ffcc; background: transparent; border: 2px solid #00ffcc; cursor: pointer; transition: all 0.3s ease; letter-spacing: 6px; box-shadow: 0 0 15px rgba(0,255,204,0.2); }
+        #startBtn:hover { background: #00ffcc; color: #020204; box-shadow: 0 0 40px rgba(0,255,204,0.6); }
+        #status { margin-top: 30px; color: rgba(0, 255, 204, 0.5); font-size: 12px; letter-spacing: 3px; text-transform: uppercase; text-align: center; }
+        .scan-line { width: 200px; height: 2px; background: #00ffcc; position: absolute; animation: scan 2s linear infinite; opacity: 0.3; }
+        @keyframes scan { 0% { top: 30%; } 50% { top: 70%; } 100% { top: 30%; } }
+    </style>
+</head>
+<body>
+
+<div id="ui-overlay">
+    <div class="scan-line"></div>
+    <button id="startBtn">ENGAGE OCULAR LINK</button>
+    <div id="status">MICROSENSORS CALIBRATED // EYE-TRACKING ENHANCED</div>
+</div>
+
+<video id="video" autoplay playsinline muted></video>
+<canvas id="canvas"></canvas>
+
+<script>
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const uiOverlay = document.getElementById('ui-overlay');
+    const startBtn = document.getElementById('startBtn');
+    const statusText = document.getElementById('status');
+
+    let dataNodes = [];
+    let audioCtx, masterGain, carrierOsc, modulatorOsc, modGain, filterNode, delayNode, feedbackGain;
+    
+    let currentStyle = { hue: 180, lineDensity: 45, glitchChance: 0.01, baseFreq: 150, modFreq: 5, modGain: 20, filterFreq: 800 };
+    let targetStyle = { hue: 180, lineDensity: 45, glitchChance: 0.01, baseFreq: 150, modFreq: 5, modGain: 20, filterFreq: 800 };
+
+    const CYBER_MAP = [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109, 33, 160, 158, 133, 153, 144, 362, 385, 387, 263, 373, 380, 78, 95, 88, 178, 87, 14, 317, 402, 318, 324, 308];
+
+    function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+    window.onresize = resize;
+    resize();
+
+    const faceMesh = new FaceMesh({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`});
+    faceMesh.setOptions({ maxNumFaces: 1, refineLandmarks: true, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
+    faceMesh.onResults(onOcularNeuralResults);
+
+    startBtn.onclick = async () => {
+        statusText.innerText = "CONNECTING NEURAL AUDIO MATRIX...";
+        try {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') await audioCtx.resume();
+            setupQuantumSynth();
+
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" } 
+            });
+            video.srcObject = stream;
+            
+            video.onloadedmetadata = () => {
+                video.play();
+                uiOverlay.style.opacity = '0';
+                setTimeout(() => uiOverlay.style.display = 'none', 1000);
+                
+                cameraProcessingLoop();
+                renderCyberSpace();
+            };
+        } catch (err) {
+            statusText.style.color = "#ff3366";
+            statusText.innerText = `LINK_FAILED: ${err.message.toUpperCase()}`;
+        }
+    };
+
+    async function cameraProcessingLoop() {
+        if (video.readyState === 4) await faceMesh.send({ image: video });
+        requestAnimationFrame(cameraProcessingLoop);
+    }
+
+    function setupQuantumSynth() {
+        carrierOsc = audioCtx.createOscillator();
+        modulatorOsc = audioCtx.createOscillator();
+        modGain = audioCtx.createGain();
+        filterNode = audioCtx.createBiquadFilter();
+        masterGain = audioCtx.createGain();
+        delayNode = audioCtx.createDelay();
+        feedbackGain = audioCtx.createGain();
+
+        // Onda a dente di sega modificata: reagisce in modo estremo ai filtri di risonanza
+        carrierOsc.type = 'sawtooth';
+        modulatorOsc.type = 'triangle';
+        
+        filterNode.type = 'lowpass';
+        filterNode.Q.setValueAtTime(14, audioCtx.currentTime); // Risonanza aumentata per evidenziare i battiti di ciglia
+
+        delayNode.delayTime.value = 0.25; 
+        feedbackGain.gain.value = 0.4;   
+        masterGain.gain.setValueAtTime(0.12, audioCtx.currentTime); 
+
+        modulatorOsc.connect(modGain);
+        modGain.connect(carrierOsc.frequency);
+        carrierOsc.connect(filterNode);
+        filterNode.connect(masterGain);
+        
+        masterGain.connect(audioCtx.destination);
+        masterGain.connect(delayNode);
+        delayNode.connect(feedbackGain);
+        feedbackGain.connect(delayNode);
+        delayNode.connect(audioCtx.destination);
+
+        carrierOsc.start();
+        modulatorOsc.start();
+    }
+
+    // --- TRACKING AD ALTA SENSIBILITÀ INTEGRATO ---
+    function onOcularNeuralResults(results) {
+        if (!results.multiFaceLandmarks || results.multiFaceLandmarks.length === 0) return;
+        
+        const lm = results.multiFaceLandmarks[0];
+
+        // 1. Estrazione millimetrica dell'apertura oculare (Media destra/sinistra)
+        const eyeLeft = Math.abs(lm[159].y - lm[145].y);
+        const eyeRight = Math.abs(lm[386].y - lm[374].y);
+        const avgEyeDistance = (eyeLeft + eyeRight) / 2;
+
+        // Esponenzializzazione dello scarto: la distanza occhio nel FaceMesh varia solitamente tra 0.010 (chiuso) e 0.032 (spalancato)
+        const eyeFactor = Math.min(Math.max((avgEyeDistance - 0.011) / 0.021, 0), 1);
+
+        // 2. Altre micro-espressioni di supporto
+        const dMouthOpen = Math.abs(lm[13].y - lm[14].y);
+        const dMouthWidth = Math.abs(lm[61].x - lm[291].x);
+        const dBrowDist = Math.abs(lm[55].x - lm[285].x);
+
+        const smileFactor = Math.min(Math.max((dMouthWidth - 0.12) / 0.06, 0), 1); 
+        const jawFactor = Math.min(Math.max(dMouthOpen / 0.08, 0), 1);
+        const frownFactor = Math.min(Math.max((0.21 - dBrowDist) / 0.05, 0), 1); 
+
+        // 3. GENERAZIONE COLORE (Manteniamo la fluidità estetica richiesta)
+        let baseHue = 160; 
+        if (smileFactor > 0.05) baseHue = baseHue * (1 - smileFactor) + 45 * smileFactor;
+        if (frownFactor > 0.05) baseHue = baseHue * (1 - frownFactor) + 0 * frownFactor;
+        if (eyeFactor > 0.7) baseHue = baseHue * (1 - eyeFactor) + 300 * eyeFactor; // Viraggio al magenta se sgranato
+        targetStyle.hue = baseHue;
+        targetStyle.lineDensity = 25 + (eyeFactor * 50) + (jawFactor * 40);
+        targetStyle.glitchChance = 0.005 + (frownFactor * 0.18) + ((1 - eyeFactor) * 0.05);
+
+        // 4. BIOMETRIA ACUSTICA RICALIBRATA (Focus totale sugli occhi)
+        // Frequenza base: segue direttamente la dilatazione palpebrale
+        targetStyle.baseFreq = 100 + (eyeFactor * 220) + (smileFactor * 150) - (frownFactor * 40);
+        
+        // Frequenza di modulazione (Il Throb cibernetico): da 2Hz (occhi socchiusi) a 65Hz (occhi spalancati, suono robotico ad anello)
+        targetStyle.modFreq = 2 + (eyeFactor * 63) + (jawFactor * 10);
+        
+        // Indice di distorsione: aumenta se si stringono gli occhi (frown/tensione) o se si spalancano di colpo
+        targetStyle.modGain = 15 + (frownFactor * 350) + (eyeFactor * 80);
+        
+        // IL FILTRO CRUCIALE (Effetto palpebra-wah): l'apertura degli occhi sposta violentemente il filtro passa-basso
+        // Un battito di ciglia genererà un immediato effetto "wom-wom" ad alto impatto.
+        targetStyle.filterFreq = 200 + (eyeFactor * 2400) + (jawFactor * 800) - (frownFactor * 100);
+
+        // Mappatura Nodi Grafici
+        dataNodes = CYBER_MAP.map(index => {
+            return { x: (1 - lm[index].x) * canvas.width, y: lm[index].y * canvas.height };
+        });
+    }
+
+    function renderCyberSpace() {
+        ctx.fillStyle = 'rgba(1, 1, 3, 0.15)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // Lerp a 0.12 per rendere la risposta acustica fulminea ma priva di artefatti digitali negativi
+        currentStyle.hue += (targetStyle.hue - currentStyle.hue) * 0.1;
+        currentStyle.lineDensity += (targetStyle.lineDensity - currentStyle.lineDensity) * 0.1;
+        currentStyle.glitchChance += (targetStyle.glitchChance - currentStyle.glitchChance) * 0.1;
+        
+        currentStyle.baseFreq += (targetStyle.baseFreq - currentStyle.baseFreq) * 0.12;
+        currentStyle.modFreq += (targetStyle.modFreq - currentStyle.modFreq) * 0.12;
+        currentStyle.modGain += (targetStyle.modGain - currentStyle.modGain) * 0.12;
+        currentStyle.filterFreq += (targetStyle.filterFreq - currentStyle.filterFreq) * 0.12;
+
+        if (audioCtx && carrierOsc) {
+            carrierOsc.frequency.setTargetAtTime(currentStyle.baseFreq, audioCtx.currentTime, 0.02);
+            modulatorOsc.frequency.setTargetAtTime(currentStyle.modFreq, audioCtx.currentTime, 0.02);
+            modGain.gain.setTargetAtTime(currentStyle.modGain, audioCtx.currentTime, 0.02);
+            filterNode.frequency.setTargetAtTime(currentStyle.filterFreq, audioCtx.currentTime, 0.02);
+        }
+
+        const nodesLength = dataNodes.length;
+
+        if (nodesLength > 0) {
+            ctx.lineWidth = 0.7;
+            for (let i = 0; i < nodesLength; i++) {
+                for (let j = i + 1; j < nodesLength; j++) {
+                    let dist = Math.hypot(dataNodes[i].x - dataNodes[j].x, dataNodes[i].y - dataNodes[j].y);
+                    
+                    if (dist < currentStyle.lineDensity) {
+                        let opacity = (1 - (dist / currentStyle.lineDensity)) * 0.35;
+                        ctx.strokeStyle = `hsla(${currentStyle.hue}, 100%, 55%, ${opacity})`;
+                        ctx.beginPath();
+                        ctx.moveTo(dataNodes[i].x, dataNodes[j].y);
+                        ctx.lineTo(dataNodes[j].x, dataNodes[i].y);
+                        ctx.stroke();
+                    }
+                }
+            }
+
+            let offsetGlitchX = 0;
+            if (Math.random() < currentStyle.glitchChance) {
+                offsetGlitchX = (Math.random() - 0.5) * (currentStyle.glitchChance * 200);
+                ctx.fillStyle = `hsla(${currentStyle.hue}, 100%, 70%, 0.15)`;
+                ctx.fillRect(0, Math.random() * canvas.height, canvas.width, Math.random() * 15);
+            }
+
+            for (let i = 0; i < nodesLength; i++) {
+                ctx.fillStyle = `hsla(${currentStyle.hue}, 100%, 65%, 0.75)`;
+                ctx.fillRect(dataNodes[i].x - 1 + offsetGlitchX, dataNodes[i].y - 1, 2, 2);
+            }
+        }
+
+        requestAnimationFrame(renderCyberSpace);
+    }
+</script>
+</body>
+</html>
