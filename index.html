@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EMO - Ethereal Biometric Mirror</title>
+    <title>EMO - Ethereal Live Core</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
 
@@ -13,16 +13,16 @@
         video { display: none; }
         
         #ui-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 10; background: radial-gradient(circle, rgba(15,20,35,0.98) 0%, rgba(3,3,7,1) 100%); transition: all 1.2s cubic-bezier(0.4, 0, 0.2, 1); }
-        #startBtn { padding: 22px 55px; font-size: 16px; font-weight: 300; color: #00e5ff; background: transparent; border: 1px solid rgba(0,229,255,0.3); cursor: pointer; transition: all 0.5s ease; letter-spacing: 6px; border-radius: 50px; }
+        #startBtn { padding: 22px 55px; font-size: 16px; font-weight: 300; color: #00e5ff; background: transparent; border: 1px solid rgba(0,229,255,0.3); cursor: pointer; transition: all 0.5s ease; letter-spacing: 6px; border-radius: 50px; text-transform: uppercase; }
         #startBtn:hover { background: rgba(0,229,255,0.08); border-color: #00e5ff; box-shadow: 0 0 30px rgba(0,229,255,0.2); }
-        #status { margin-top: 30px; color: rgba(0, 229, 255, 0.4); font-size: 11px; letter-spacing: 4px; text-transform: uppercase; text-align: center; }
+        #status { margin-top: 30px; color: rgba(0, 229, 255, 0.4); font-size: 11px; letter-spacing: 4px; text-transform: uppercase; text-align: center; max-width: 80%; line-height: 1.6; }
     </style>
 </head>
 <body>
 
 <div id="ui-overlay">
-    <button id="startBtn">ATTIVA FLUSSO ARMONICO</button>
-    <div id="status">SISTEMA BIO-ELETTRONICO PRONTO // CALIBRATO</div>
+    <button id="startBtn">INIZIA ESPERIENZA</button>
+    <div id="status">IN ATTESA DEL COLLEGAMENTO BIOMETRICO...</div>
 </div>
 
 <video id="video" autoplay playsinline muted></video>
@@ -39,29 +39,38 @@
     let dataNodes = [];
     let audioCtx, masterGain, carrierOsc, modulatorOsc, modGain, filterNode, delayNode, feedbackGain;
     
-    // Struttura parametri flessibili e armonici (Intervalli rilassanti)
     let currentStyle = { hue: 195, lineDensity: 40, baseFreq: 220, modFreq: 0.5, modGain: 2, filterFreq: 1200 };
     let targetStyle = { hue: 195, lineDensity: 40, baseFreq: 220, modFreq: 0.5, modGain: 2, filterFreq: 1200 };
 
-    // Mappatura completa del volto: include occhi, sopracciglia, contorno labbra e la linea degli zigomi
     const CYBER_MAP = [
-        10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162, // Contorno Ovale
-        33, 160, 158, 133, 153, 144, 362, 385, 387, 263, 373, 380, // Occhi integrali
-        70, 63, 105, 66, 107, 336, 296, 334, 293, 300, // Sopracciglia
-        61, 146, 91, 181, 84, 17, 314, 405, 321, 375, 291, 308, 324, 318, 402, 317, 14, 87, 178, 88, 95, // Labbra esterne ed interne
-        50, 117, 118, 123, 147, 280, 346, 347, 352, 376 // Struttura volumetrica degli Zigomi
+        10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162,
+        33, 160, 158, 133, 153, 144, 362, 385, 387, 263, 373, 380,
+        70, 63, 105, 66, 107, 336, 296, 334, 293, 300,
+        61, 146, 91, 181, 84, 17, 314, 405, 321, 375, 291, 308, 324, 318, 402, 317, 14, 87, 178, 88, 95,
+        50, 117, 118, 123, 147, 280, 346, 347, 352, 376
     ];
 
     function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
     window.onresize = resize;
     resize();
 
-    const faceMesh = new FaceMesh({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`});
+    // Configurazione HTTPS sicura per il cloud
+    const faceMesh = new FaceMesh({
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
+    });
     faceMesh.setOptions({ maxNumFaces: 1, refineLandmarks: true, minDetectionConfidence: 0.6, minTrackingConfidence: 0.6 });
     faceMesh.onResults(onEtherealBiometrics);
 
     startBtn.onclick = async () => {
-        statusText.innerText = "GENERAZIONE SPAZIO SONORO IPNOTICO...";
+        // Controllo HTTPS preventivo online
+        if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+            statusText.style.color = "#ff3366";
+            statusText.innerHTML = "ERRORE CRITICO: I browser bloccano la fotocamera online se il sito non usa HTTPS.<br>Trasferisci il file su un hosting sicuro (SSL/HTTPS).";
+            return;
+        }
+
+        statusText.innerText = "CONFIGURAZIONE AUDIO E RETE NEURALE IN CORSO...";
+        
         try {
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             if (audioCtx.state === 'suspended') await audioCtx.resume();
@@ -82,16 +91,26 @@
             };
         } catch (err) {
             statusText.style.color = "#ff3366";
-            statusText.innerText = `LINK_FAILED: ${err.message.toUpperCase()}`;
+            if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+                statusText.innerText = "ERRORE: Accesso alla fotocamera negato. Controlla i permessi del tuo browser.";
+            } else {
+                statusText.innerText = `ERRORE ONLINE: ${err.name} - ${err.message}`;
+            }
+            console.error(err);
         }
     };
 
     async function cameraProcessingLoop() {
-        if (video.readyState === 4) await faceMesh.send({ image: video });
+        if (video.readyState === 4) {
+            try {
+                await faceMesh.send({ image: video });
+            } catch (e) {
+                console.error("Errore di elaborazione frame cloud:", e);
+            }
+        }
         requestAnimationFrame(cameraProcessingLoop);
     }
 
-    // Sintetizzatore Zen / Ambient (Onde pure, risonanze morbide, eco profondo)
     function setupAmbientSynth() {
         carrierOsc = audioCtx.createOscillator();
         modulatorOsc = audioCtx.createOscillator();
@@ -101,17 +120,15 @@
         delayNode = audioCtx.createDelay();
         feedbackGain = audioCtx.createGain();
 
-        // Onde sinusoidali pure: eliminano qualsiasi asprezza o distorsione
         carrierOsc.type = 'sine';
         modulatorOsc.type = 'sine';
         
-        // Filtro molto dolce (Q basso) per simulare un'atmosfera acquatica o aerea
         filterNode.type = 'lowpass';
         filterNode.Q.setValueAtTime(2.0, audioCtx.currentTime); 
 
-        delayNode.delayTime.value = 0.6; // Eco lungo da cattedrale o spazio aperto
+        delayNode.delayTime.value = 0.6; 
         feedbackGain.gain.value = 0.55;  
-        masterGain.gain.setValueAtTime(0.08, audioCtx.currentTime); // Volume morbido di sottofondo
+        masterGain.gain.setValueAtTime(0.08, audioCtx.currentTime); 
 
         modulatorOsc.connect(modGain);
         modGain.connect(carrierOsc.frequency);
@@ -128,76 +145,54 @@
         modulatorOsc.start();
     }
 
-    // --- ANALISI INTEGRALE RIGOROSA DI TUTTI I DISTRETTI FACCIALI ---
     function onEtherealBiometrics(results) {
         if (!results.multiFaceLandmarks || results.multiFaceLandmarks.length === 0) return;
         
         const lm = results.multiFaceLandmarks[0];
 
-        // 1. OCCHI (Apertura palpebrale ad altissima sensibilità)
+        // Mappatura sensoriale avanzata (Tutti i muscoli del viso)
         const eyeLeft = Math.abs(lm[159].y - lm[145].y);
         const eyeRight = Math.abs(lm[386].y - lm[374].y);
         const eyeFactor = Math.min(Math.max(((eyeLeft + eyeRight) / 2 - 0.012) / 0.020, 0), 1);
 
-        // 2. LABBRA (Apertura bocca e larghezza sorriso)
         const mouthOpen = Math.abs(lm[13].y - lm[14].y);
         const mouthWidth = Math.abs(lm[61].x - lm[291].x);
         const jawFactor = Math.min(Math.max(mouthOpen / 0.07, 0), 1);
         const smileFactor = Math.min(Math.max((mouthWidth - 0.12) / 0.06, 0), 1);
 
-        // 3. SOPRACCIGLIA (Contrazione centrale / Sollevamento)
         const browDist = Math.abs(lm[55].x - lm[285].x);
         const browHeight = Math.abs(lm[70].y - lm[159].y);
-        const frownFactor = Math.min(Math.max((0.21 - browDist) / 0.05, 0), 1); // Vicinanza (corrugamento)
-        const liftFactor = Math.min(Math.max((browHeight - 0.04) / 0.03, 0), 1);   // Sollevamento per stupore
+        const frownFactor = Math.min(Math.max((0.21 - browDist) / 0.05, 0), 1); 
+        const liftFactor = Math.min(Math.max((browHeight - 0.04) / 0.03, 0), 1);   
 
-        // 4. ZIGOMI (Innalzamento delle guance)
-        // Calcolato misurando lo spostamento verticale dello zigomo rispetto alla base dell'occhio
         const leftCheekLift = Math.abs(lm[145].y - lm[50].y);
         const rightCheekLift = Math.abs(lm[374].y - lm[280].y);
         const avgCheekDist = (leftCheekLift + rightCheekLift) / 2;
-        // Quando sorridi o contrai il viso, lo zigomo sale verso l'occhio (la distanza si riduce)
         const cheekFactor = Math.min(Math.max((0.085 - avgCheekDist) / 0.025, 0), 1);
 
-        // --- COREOGRAFIA SONORA MEDITATIVA ED ETREA ---
-        
-        // Pitch Fondamentale: Tarato su frequenze armoniche geometriche ben definite (220Hz, LA centrale)
-        // Il sorriso e lo zigomo alto alzano la nota in una perfetta quinta musicale. La tensione la abbassa dolcemente.
+        // Algoritmi di sintesi sonora rilassante e continua
         targetStyle.baseFreq = 220 + (smileFactor * 110) + (cheekFactor * 55) - (frownFactor * 30);
-        
-        // Frequenza di Modulazione (Il "Vibrare" dell'aria): 
-        // Legatissimo agli occhi. Occhi chiusi = rilassamento immobile (0.2Hz). Occhi spalancati = onde fluttuanti cristalline.
         targetStyle.modFreq = 0.2 + (eyeFactor * 3.5) + (liftFactor * 2);
-        
-        // Profondità dell'Onda (Espansione dello spettro):
-        // Lo zigomo e le labbra modificano la morbidezza del tono senza mai creare distorsione.
         targetStyle.modGain = 2 + (cheekFactor * 15) + (jawFactor * 10);
-        
-        // Il Filtro "Oceano" (Swell delle frequenze alte):
-        // Muovendo la bocca o spalancando gli occhi, il suono si apre come una brezza marina soffice (fino a 2200Hz).
-        // Quando chiudi gli occhi o ti rilassi, il suono si spegne in un sussurro scuro e calmo.
         targetStyle.filterFreq = 400 + (eyeFactor * 1200) + (jawFactor * 800) + (liftFactor * 400);
 
-        // --- MAPPA ESTETICA VISIVA (Ciano, Zaffiro, Smeraldo, Oro Bianco) ---
-        let baseHue = 195; // Ciano Etereo di base
-        if (smileFactor > 0.05) baseHue = baseHue * (1 - smileFactor) + 150 * smileFactor; // Smeraldo rilassante
-        if (cheekFactor > 0.1) baseHue = baseHue * (1 - cheekFactor) + 45 * cheekFactor;   // Luce calda dorata
-        if (frownFactor > 0.05) baseHue = baseHue * (1 - frownFactor) + 230 * frownFactor; // Blu zaffiro profondo
+        // Variazioni cromatiche ambient (Smeraldo, Zaffiro, Oro, Ciano)
+        let baseHue = 195; 
+        if (smileFactor > 0.05) baseHue = baseHue * (1 - smileFactor) + 150 * smileFactor; 
+        if (cheekFactor > 0.1) baseHue = baseHue * (1 - cheekFactor) + 45 * cheekFactor;   
+        if (frownFactor > 0.05) baseHue = baseHue * (1 - frownFactor) + 230 * frownFactor; 
         targetStyle.hue = baseHue;
         targetStyle.lineDensity = 30 + (eyeFactor * 25) + (cheekFactor * 20);
 
-        // Mappatura Nodi
         dataNodes = CYBER_MAP.map(index => {
             return { x: (1 - lm[index].x) * canvas.width, y: lm[index].y * canvas.height };
         });
     }
 
     function renderCyberSpace() {
-        // Effetto persistenza morbido (scia sognante)
         ctx.fillStyle = 'rgba(3, 3, 7, 0.08)';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        // LERP ultra-fluido (0.05) per far fluttuare i suoni e i colori come una nuvola
         currentStyle.hue += (targetStyle.hue - currentStyle.hue) * 0.05;
         currentStyle.lineDensity += (targetStyle.lineDensity - currentStyle.lineDensity) * 0.05;
         
@@ -206,7 +201,6 @@
         currentStyle.modGain += (targetStyle.modGain - currentStyle.modGain) * 0.05;
         currentStyle.filterFreq += (targetStyle.filterFreq - currentStyle.filterFreq) * 0.05;
 
-        // Applicazione dei parametri nel motore audio nativo
         if (audioCtx && carrierOsc) {
             carrierOsc.frequency.setTargetAtTime(currentStyle.baseFreq, audioCtx.currentTime, 0.04);
             modulatorOsc.frequency.setTargetAtTime(currentStyle.modFreq, audioCtx.currentTime, 0.04);
@@ -218,8 +212,6 @@
 
         if (nodesLength > 0) {
             ctx.lineWidth = 0.6;
-            
-            // Rendering della costellazione geometrica (Morbida e trasparente)
             for (let i = 0; i < nodesLength; i++) {
                 for (let j = i + 1; j < nodesLength; j++) {
                     let dist = Math.hypot(dataNodes[i].x - dataNodes[j].x, dataNodes[i].y - dataNodes[j].y);
@@ -235,7 +227,6 @@
                 }
             }
 
-            // Disegno dei piccoli punti di luce pura (Costellazione quantistica)
             for (let i = 0; i < nodesLength; i++) {
                 ctx.fillStyle = `hsla(${currentStyle.hue}, 100%, 75%, 0.5)`;
                 ctx.beginPath();
