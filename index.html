@@ -184,4 +184,68 @@
         if (cheekFactor > 0.1) baseHue = baseHue * (1 - cheekFactor) + 45 * cheekFactor;   // Luce calda dorata
         if (frownFactor > 0.05) baseHue = baseHue * (1 - frownFactor) + 230 * frownFactor; // Blu zaffiro profondo
         targetStyle.hue = baseHue;
-        target
+        targetStyle.lineDensity = 30 + (eyeFactor * 25) + (cheekFactor * 20);
+
+        // Mappatura Nodi
+        dataNodes = CYBER_MAP.map(index => {
+            return { x: (1 - lm[index].x) * canvas.width, y: lm[index].y * canvas.height };
+        });
+    }
+
+    function renderCyberSpace() {
+        // Effetto persistenza morbido (scia sognante)
+        ctx.fillStyle = 'rgba(3, 3, 7, 0.08)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // LERP ultra-fluido (0.05) per far fluttuare i suoni e i colori come una nuvola
+        currentStyle.hue += (targetStyle.hue - currentStyle.hue) * 0.05;
+        currentStyle.lineDensity += (targetStyle.lineDensity - currentStyle.lineDensity) * 0.05;
+        
+        currentStyle.baseFreq += (targetStyle.baseFreq - currentStyle.baseFreq) * 0.05;
+        currentStyle.modFreq += (targetStyle.modFreq - currentStyle.modFreq) * 0.05;
+        currentStyle.modGain += (targetStyle.modGain - currentStyle.modGain) * 0.05;
+        currentStyle.filterFreq += (targetStyle.filterFreq - currentStyle.filterFreq) * 0.05;
+
+        // Applicazione dei parametri nel motore audio nativo
+        if (audioCtx && carrierOsc) {
+            carrierOsc.frequency.setTargetAtTime(currentStyle.baseFreq, audioCtx.currentTime, 0.04);
+            modulatorOsc.frequency.setTargetAtTime(currentStyle.modFreq, audioCtx.currentTime, 0.04);
+            modGain.gain.setTargetAtTime(currentStyle.modGain, audioCtx.currentTime, 0.04);
+            filterNode.frequency.setTargetAtTime(currentStyle.filterFreq, audioCtx.currentTime, 0.04);
+        }
+
+        const nodesLength = dataNodes.length;
+
+        if (nodesLength > 0) {
+            ctx.lineWidth = 0.6;
+            
+            // Rendering della costellazione geometrica (Morbida e trasparente)
+            for (let i = 0; i < nodesLength; i++) {
+                for (let j = i + 1; j < nodesLength; j++) {
+                    let dist = Math.hypot(dataNodes[i].x - dataNodes[j].x, dataNodes[i].y - dataNodes[j].y);
+                    
+                    if (dist < currentStyle.lineDensity) {
+                        let opacity = (1 - (dist / currentStyle.lineDensity)) * 0.22;
+                        ctx.strokeStyle = `hsla(${currentStyle.hue}, 90%, 65%, ${opacity})`;
+                        ctx.beginPath();
+                        ctx.moveTo(dataNodes[i].x, dataNodes[j].y);
+                        ctx.lineTo(dataNodes[j].x, dataNodes[i].y);
+                        ctx.stroke();
+                    }
+                }
+            }
+
+            // Disegno dei piccoli punti di luce pura (Costellazione quantistica)
+            for (let i = 0; i < nodesLength; i++) {
+                ctx.fillStyle = `hsla(${currentStyle.hue}, 100%, 75%, 0.5)`;
+                ctx.beginPath();
+                ctx.arc(dataNodes[i].x, dataNodes[i].y, 1, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        requestAnimationFrame(renderCyberSpace);
+    }
+</script>
+</body>
+</html>
