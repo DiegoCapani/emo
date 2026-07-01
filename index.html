@@ -1,0 +1,259 @@
+Raccolgo la sfida. Il **canto delle balene** è uno dei riferimenti più affascinanti per il sound design: richiede suoni che fluttuano ed evaporano, glissandi continui (frequenze che scivolano senza interruzioni), un timbro cavo/vocale e un senso di spazio immenso, oceanico.
+
+Per ottenere questo risultato ho riprogettato da zero il motore sonoro:
+
+1. **Il Timbro Marino (Filtro Bandpass):** Ho impostato il filtro su **`bandpass`** (passa-banda) anziché *lowpass*. Questo isola una specifica porzione di frequenze medie, eliminando i bassi fangosi e gli alti taglienti. Il risultato è quel suono iconico, vuoto e "vocalico" tipico dei cetacei.
+2. **Il Glissando Biometrico:** Ho rallentato l'inerzia matematica dell'audio. Ora, quando spalanchi gli occhi o sorridi, la nota non salta bruscamente ma **scivola lentamente** verso l'alto con un effetto *portamento* magico e continuo.
+3. **L'Eco dell'Abisso:** Ho spinto il Delay a un tempo molto lungo ($0.8\text{ secondi}$) con un feedback del **$62\%$**. Ogni minima espressione genera un'eco che si propaga come se rimbalzasse in un canyon sottomarino.
+
+Ecco il codice aggiornato, completo del tracciamento del naso e del nuovo ambiente sonoro oceanico:
+
+```html
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EMO - Cetacean Biometric Abyss</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #01040a; font-family: 'Helvetica Neue', Arial, sans-serif; }
+        canvas { display: block; width: 100%; height: 100%; }
+        video { display: none; }
+        
+        #ui-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 10; background: radial-gradient(circle, rgba(4,18,32,0.98) 0%, rgba(1,4,10,1) 100%); transition: all 1.2s ease; }
+        #startBtn { padding: 22px 55px; font-size: 15px; font-weight: 300; color: #00ffcc; background: transparent; border: 1px solid rgba(0,255,204,0.3); cursor: pointer; transition: all 0.5s ease; letter-spacing: 6px; border-radius: 50px; text-transform: uppercase; }
+        #startBtn:hover { background: rgba(0,255,204,0.07); border-color: #00ffcc; box-shadow: 0 0 40px rgba(0,255,204,0.2); }
+        #status { margin-top: 30px; color: rgba(0, 255, 204, 0.4); font-size: 11px; letter-spacing: 4px; text-transform: uppercase; text-align: center; }
+    </style>
+</head>
+<body>
+
+<div id="ui-overlay">
+    <button id="startBtn">IMMERGI NELL'ABISSO</button>
+    <div id="status">SISTEMA BIO-ACUSTICO PRONTO // MODULAZIONE CETACEA</div>
+</div>
+
+<video id="video" autoplay playsinline muted></video>
+<canvas id="canvas"></canvas>
+
+<script>
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const uiOverlay = document.getElementById('ui-overlay');
+    const startBtn = document.getElementById('startBtn');
+    const statusText = document.getElementById('status');
+
+    let dataNodes = [];
+    let audioCtx, masterGain, carrierOsc, modulatorOsc, modGain, filterNode, delayNode, feedbackGain;
+    
+    // Parametri iniziali fluidi (orientati alle frequenze delle balene)
+    let currentStyle = { hue: 190, lineDensity: 42, baseFreq: 120, modFreq: 0.4, modGain: 8, filterFreq: 600 };
+    let targetStyle = { hue: 190, lineDensity: 42, baseFreq: 120, modFreq: 0.4, modGain: 8, filterFreq: 600 };
+
+    // Mappatura Visiva Perfetta (Incluso il NASO al centro)
+    const CYBER_MAP = [
+        10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162, // Ovale
+        33, 160, 158, 133, 153, 144, 362, 385, 387, 263, 373, 380, // Occhi
+        70, 63, 105, 66, 107, 336, 296, 334, 293, 300, // Sopracciglia
+        61, 146, 91, 181, 84, 17, 314, 405, 321, 375, 291, 308, 324, 318, 402, 317, 14, 87, 178, 88, 95, // Labbra
+        50, 117, 118, 123, 147, 280, 346, 347, 352, 376, // Zigomi
+        6, 168, 197, 4, 2, 98, 327 // Naso tracciato correttamente
+    ];
+
+    function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+    window.onresize = resize;
+    resize();
+
+    const faceMesh = new FaceMesh({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}` });
+    faceMesh.setOptions({ maxNumFaces: 1, refineLandmarks: true, minDetectionConfidence: 0.6, minTrackingConfidence: 0.6 });
+    faceMesh.onResults(onOceanicBiometrics);
+
+    startBtn.onclick = async () => {
+        if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+            statusText.style.color = "#ff3366";
+            statusText.innerHTML = "ERRORE: Online è necessaria una connessione protetta HTTPS per attivare la fotocamera.";
+            return;
+        }
+
+        statusText.innerText = "COSTRUZIONE AMBIENTE ACUSTICO SOTTOMARINO...";
+        try {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') await audioCtx.resume();
+            setupWhaleSynth();
+
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" } 
+            });
+            video.srcObject = stream;
+            
+            video.onloadedmetadata = () => {
+                video.play();
+                uiOverlay.style.opacity = '0';
+                setTimeout(() => uiOverlay.style.display = 'none', 1200);
+                cameraProcessingLoop();
+                renderCyberSpace();
+            };
+        } catch (err) {
+            statusText.style.color = "#ff3366";
+            statusText.innerText = `FALLITO: ${err.message.toUpperCase()}`;
+        }
+    };
+
+    async function cameraProcessingLoop() {
+        if (video.readyState === 4) await faceMesh.send({ image: video });
+        requestAnimationFrame(cameraProcessingLoop);
+    }
+
+    // --- GENERATORE DI CANTO DELLE BALENE (Sintesi Vocale-Idroacustica) ---
+    function setupWhaleSynth() {
+        carrierOsc = audioCtx.createOscillator();
+        modulatorOsc = audioCtx.createOscillator();
+        modGain = audioCtx.createGain();
+        filterNode = audioCtx.createBiquadFilter();
+        masterGain = audioCtx.createGain();
+        delayNode = audioCtx.createDelay();
+        feedbackGain = audioCtx.createGain();
+
+        // Onda a triangolo: possiede armoniche cave ideali per i lamenti dei cetacei
+        carrierOsc.type = 'triangle'; 
+        modulatorOsc.type = 'sine';   // Modulante pura per oscillazioni lente
+        
+        // FILTRO BANDPASS: Isola le formanti liquide, creando il suono sordo e cantilenante
+        filterNode.type = 'bandpass';
+        filterNode.Q.setValueAtTime(4.5, audioCtx.currentTime); 
+
+        // Eco abissale profondo
+        delayNode.delayTime.value = 0.82; 
+        feedbackGain.gain.value = 0.62;   // Le code sonore fluttuano a lungo nell'oceano
+        masterGain.gain.setValueAtTime(0.07, audioCtx.currentTime); 
+
+        modulatorOsc.connect(modGain);
+        modGain.connect(carrierOsc.frequency);
+        carrierOsc.connect(filterNode);
+        filterNode.connect(masterGain);
+        
+        masterGain.connect(audioCtx.destination);
+        masterGain.connect(delayNode);
+        delayNode.connect(feedbackGain);
+        feedbackGain.connect(delayNode);
+        delayNode.connect(audioCtx.destination);
+
+        carrierOsc.start();
+        modulatorOsc.start();
+    }
+
+    // --- TRACCIAMENTO ESPRESSIVO ULTRA-REATTIVO ---
+    function onOceanicBiometrics(results) {
+        if (!results.multiFaceLandmarks || results.multiFaceLandmarks.length === 0) return;
+        
+        const lm = results.multiFaceLandmarks[0];
+
+        // Estrazione micro-escursioni
+        const eyeLeft = Math.abs(lm[159].y - lm[145].y);
+        const eyeRight = Math.abs(lm[386].y - lm[374].y);
+        const eyeFactor = Math.min(Math.max(((eyeLeft + eyeRight) / 2 - 0.011) / 0.019, 0), 1); // Sensibilità palpebre estrema
+
+        const mouthOpen = Math.abs(lm[13].y - lm[14].y);
+        const mouthWidth = Math.abs(lm[61].x - lm[291].x);
+        const jawFactor = Math.min(Math.max(mouthOpen / 0.07, 0), 1);
+        const smileFactor = Math.min(Math.max((mouthWidth - 0.12) / 0.05, 0), 1);
+
+        const browDist = Math.abs(lm[55].x - lm[285].x);
+        const browHeight = Math.abs(lm[70].y - lm[159].y);
+        const frownFactor = Math.min(Math.max((0.21 - browDist) / 0.04, 0), 1); 
+        const liftFactor = Math.min(Math.max((browHeight - 0.04) / 0.025, 0), 1);   
+
+        const leftCheekLift = Math.abs(lm[145].y - lm[50].y);
+        const rightCheekLift = Math.abs(lm[374].y - lm[280].y);
+        const cheekFactor = Math.min(Math.max((0.085 - ((leftCheekLift + rightCheekLift) / 2)) / 0.02, 0), 1);
+
+        // --- CALIBRAZIONE ACUSTICA "CETACEA" ---
+        
+        // Frequenza Base (La nota del lamento): 
+        // Gli occhi che si spalancano o il sorriso fanno scivolare il pitch verso l'alto (fino a 320Hz), 
+        // mentre socchiudere gli occhi fa sprofondare il suono in un profondo "sub-bass" marino (85Hz).
+        targetStyle.baseFreq = 85 + (eyeFactor * 140) + (smileFactor * 110) - (frownFactor * 25);
+        
+        // Frequenza del Fluido (La stabilità del canto):
+        // Muovendo le sopracciglia o gli zigomi si introduce un fluttuare organico, lento e instabile (onde marine).
+        targetStyle.modFreq = 0.1 + (liftFactor * 1.8) + (cheekFactor * 0.9);
+        
+        // Profondità dell'Onda: Modifica l'ampiezza del pianto della balena.
+        targetStyle.modGain = 4 + (frownFactor * 35) + (jawFactor * 20);
+        
+        // Movimento del Filtro Bandpass (Il "Vocalizzo" sottomarino):
+        // Aprire la bocca o muovere gli occhi sposta il centro del filtro. Sentirai chiaramente il suono aprirsi 
+        // e fare "Waaaaaooouuum", imitando perfettamente lo sfiatatoio e la modulazione animale.
+        targetStyle.filterFreq = 250 + (jawFactor * 900) + (eyeFactor * 600) + (smileFactor * 300);
+
+        // Estetica visiva abissale (Gradazioni dal profondo blu notte al verde acqua marino)
+        let baseHue = 200; 
+        if (smileFactor > 0.05) baseHue = baseHue * (1 - smileFactor) + 165 * smileFactor; 
+        if (cheekFactor > 0.1) baseHue = baseHue * (1 - cheekFactor) + 140 * cheekFactor;   
+        if (frownFactor > 0.05) baseHue = baseHue * (1 - frownFactor) + 235 * frownFactor; 
+        targetStyle.hue = baseHue;
+        targetStyle.lineDensity = 32 + (eyeFactor * 22) + (cheekFactor * 15) + (jawFactor * 15);
+
+        dataNodes = CYBER_MAP.map(index => {
+            return { x: (1 - lm[index].x) * canvas.width, y: lm[index].y * canvas.height };
+        });
+    }
+
+    function renderCyberSpace() {
+        ctx.fillStyle = 'rgba(1, 4, 10, 0.08)'; // Scia sottomarina morbida
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // LERP rallentato a 0.035 su frequenze e filtri: crea lo scivolamento (glissando) tipico dei canti delle balene
+        currentStyle.hue += (targetStyle.hue - currentStyle.hue) * 0.05;
+        currentStyle.lineDensity += (targetStyle.lineDensity - currentStyle.lineDensity) * 0.05;
+        
+        currentStyle.baseFreq += (targetStyle.baseFreq - currentStyle.baseFreq) * 0.035; 
+        currentStyle.modFreq += (targetStyle.modFreq - currentStyle.modFreq) * 0.04;
+        currentStyle.modGain += (targetStyle.modGain - currentStyle.modGain) * 0.04;
+        currentStyle.filterFreq += (targetStyle.filterFreq - currentStyle.filterFreq) * 0.035;
+
+        if (audioCtx && carrierOsc) {
+            carrierOsc.frequency.setTargetAtTime(currentStyle.baseFreq, audioCtx.currentTime, 0.05);
+            modulatorOsc.frequency.setTargetAtTime(currentStyle.modFreq, audioCtx.currentTime, 0.05);
+            modGain.gain.setTargetAtTime(currentStyle.modGain, audioCtx.currentTime, 0.05);
+            filterNode.frequency.setTargetAtTime(currentStyle.filterFreq, audioCtx.currentTime, 0.05);
+        }
+
+        const nodesLength = dataNodes.length;
+
+        if (nodesLength > 0) {
+            ctx.lineWidth = 0.6;
+            for (let i = 0; i < nodesLength; i++) {
+                for (let j = i + 1; j < nodesLength; j++) {
+                    let dist = Math.hypot(dataNodes[i].x - dataNodes[j].x, dataNodes[i].y - dataNodes[j].y);
+                    
+                    if (dist < currentStyle.lineDensity) {
+                        let opacity = (1 - (dist / currentStyle.lineDensity)) * 0.24;
+                        ctx.strokeStyle = `hsla(${currentStyle.hue}, 85%, 60%, ${opacity})`;
+                        ctx.beginPath();
+                        ctx.moveTo(dataNodes[i].x, dataNodes[j].y);
+                        ctx.lineTo(dataNodes[j].x, dataNodes[i].y);
+                        ctx.stroke();
+                    }
+                }
+            }
+
+            for (let i = 0; i < nodesLength; i++) {
+                ctx.fillStyle = `hsla(${currentStyle.hue}, 100%, 75%, 0.5)`;
+                ctx.beginPath();
+                ctx.arc(dataNodes[i].x, dataNodes[i].y, 1, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        requestAnimationFrame(renderCyberSpace);
+    }
+</script>
+</body>
+</html>
+
+```
