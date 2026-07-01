@@ -1,1 +1,230 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EMO - Cybernetic Quantum Mirror</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
 
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #020204; font-family: 'Courier New', Courier, monospace; }
+        canvas { display: block; width: 100%; height: 100%; }
+        video { display: none; }
+        
+        /* Interfaccia Cyberpunk */
+        #ui-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 10; background: radial-gradient(circle, rgba(10,15,30,0.95) 0%, rgba(2,2,4,1) 100%); transition: all 1s ease; }
+        #startBtn { padding: 25px 60px; font-size: 18px; font-weight: bold; color: #00ffcc; background: transparent; border: 2px solid #00ffcc; cursor: pointer; transition: all 0.3s ease; letter-spacing: 6px; box-shadow: 0 0 15px rgba(0,255,204,0.2); }
+        #startBtn:hover { background: #00ffcc; color: #020204; box-shadow: 0 0 40px rgba(0,255,204,0.6); text-shadow: none; }
+        #status { margin-top: 30px; color: rgba(0, 255, 204, 0.5); font-size: 12px; letter-spacing: 3px; text-transform: uppercase; text-align: center; }
+        
+        /* HUD di caricamento futuristico */
+        .scan-line { width: 200px; height: 2px; background: #00ffcc; position: absolute; animation: scan 2s linear infinite; opacity: 0.3; }
+        @keyframes scan { 0% { top: 30%; } 50% { top: 70%; } 100% { top: 30%; } }
+    </style>
+</head>
+<body>
+
+<div id="ui-overlay">
+    <div class="scan-line"></div>
+    <button id="startBtn">INITIALIZE CORE</button>
+    <div id="status">SYS_STATUS: NEURAL LINK READY // AWAITING USER</div>
+</div>
+
+<video id="video" autoplay playsinline muted></video>
+<canvas id="canvas"></canvas>
+
+<script>
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const uiOverlay = document.getElementById('ui-overlay');
+    const startBtn = document.getElementById('startBtn');
+    const statusText = document.getElementById('status');
+
+    let dataNodes = [];
+    let audioCtx, masterGain, carrierOsc, modulatorOsc, modGain, delayNode, feedbackGain;
+    let currentStyle = { hue: 180, lineDensity: 40, glitchChance: 0.02, baseFreq: 120, noiseLevel: 10 };
+
+    // Array di indici dei landmark facciali per creare la griglia cibernetica (occhi, bocca, contorno)
+    const CYBER_MAP = [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109, 21, 162, 127, 234, 93, 132, 58, 172, 136, 150, 149, 176, 148, 152, 377, 400, 378, 379, 365, 397, 288, 361, 323, 454, 356, 389, 251, 284, 332, 297, 338, 10, 33, 160, 158, 133, 153, 144, 362, 385, 387, 263, 373, 380, 78, 95, 88, 178, 87, 14, 317, 402, 318, 324, 308];
+
+    function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+    window.onresize = resize;
+    resize();
+
+    // Inizializzazione IA Core
+    const faceMesh = new FaceMesh({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`});
+    faceMesh.setOptions({ maxNumFaces: 1, refineLandmarks: true, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
+    faceMesh.onResults(onNeuralResults);
+
+    startBtn.onclick = async () => {
+        statusText.innerText = "CONNECTING BIOMETRIC FEED...";
+        try {
+            // Sblocco e inizializzazione del motore Audio Sci-Fi
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') await audioCtx.resume();
+            setupCyberSynth();
+
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" } 
+            });
+            video.srcObject = stream;
+            
+            video.onloadedmetadata = () => {
+                video.play();
+                uiOverlay.style.opacity = '0';
+                setTimeout(() => uiOverlay.style.display = 'none', 1000);
+                
+                cameraProcessingLoop();
+                renderCyberSpace();
+            };
+        } catch (err) {
+            statusText.style.color = "#ff3366";
+            statusText.innerText = `LINK_FAILED: ${err.message.toUpperCase()}`;
+        }
+    };
+
+    async function cameraProcessingLoop() {
+        if (video.readyState === 4) {
+            await faceMesh.send({ image: video });
+        }
+        requestAnimationFrame(cameraProcessingLoop);
+    }
+
+    // Sintetizzatore di Fantascienza (FM Synthesis + Spazializzatore Delay)
+    function setupCyberSynth() {
+        carrierOsc = audioCtx.createOscillator();
+        modulatorOsc = audioCtx.createOscillator();
+        modGain = audioCtx.createGain();
+        masterGain = audioCtx.createGain();
+        
+        delayNode = audioCtx.createDelay();
+        feedbackGain = audioCtx.createGain();
+        const filter = audioCtx.createBiquadFilter();
+
+        // Configurazione Onde (Triangle/Sawtooth creano suoni molto più tecnologici del Sine)
+        carrierOsc.type = 'triangle';
+        modulatorOsc.type = 'sawtooth';
+        
+        carrierOsc.frequency.setValueAtTime(120, audioCtx.currentTime);
+        modulatorOsc.frequency.setValueAtTime(8, audioCtx.currentTime);
+        modGain.gain.setValueAtTime(40, audioCtx.currentTime);
+        
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(800, audioCtx.currentTime);
+
+        delayNode.delayTime.value = 0.4; // Tempo dell'eco spaziale
+        feedbackGain.gain.value = 0.5;   // Quantità di riverbero/feedback
+
+        masterGain.gain.setValueAtTime(0.12, audioCtx.currentTime); // Volume ottimale per altoparlanti
+
+        // Connessioni FM + Circuitazione Delay
+        modulatorOsc.connect(modGain);
+        modGain.connect(carrierOsc.frequency);
+        carrierOsc.connect(filter);
+        filter.connect(masterGain);
+        
+        // Loop dell'Eco Spaziale
+        masterGain.connect(audioCtx.destination);
+        masterGain.connect(delayNode);
+        delayNode.connect(feedbackGain);
+        feedbackGain.connect(delayNode);
+        delayNode.connect(audioCtx.destination);
+
+        carrierOsc.start();
+        modulatorOsc.start();
+    }
+
+    function onNeuralResults(results) {
+        if (!results.multiFaceLandmarks || results.multiFaceLandmarks.length === 0) return;
+        
+        const lm = results.multiFaceLandmarks[0];
+
+        // Analisi biometrica vettoriale
+        const mouthOpen = Math.abs(lm[13].y - lm[14].y) * 100;
+        const mouthWidth = Math.abs(lm[61].x - lm[291].x) * 100;
+        const eyeOpen = (Math.abs(lm[159].y - lm[145].y) + Math.abs(lm[386].y - lm[374].y)) * 50;
+        const browDistance = Math.abs(lm[55].x - lm[285].x) * 100;
+
+        // Cambiamento radicale degli stili grafici e sonori in base alle micro-espressioni
+        if (mouthWidth > 16.5 && eyeOpen > 2.5) { 
+            // FELICITÀ: Matrice Dorata/Neon, frequenze armoniche alte e vibranti
+            currentStyle = { hue: 50, lineDensity: 60, glitchChance: 0.01, baseFreq: 260, noiseLevel: 5 };
+        } else if (browDistance < 18 && mouthOpen > 1.5) { 
+            // IRA: Griglia rossa instabile, glitch continui, suoni distorti e aggressivi
+            currentStyle = { hue: 0, lineDensity: 120, glitchChance: 0.3, baseFreq: 65, noiseLevel: 80 };
+        } else if (mouthOpen > 5) { 
+            // SORPRESA: Flussi ciano ed espansioni geometriche cariche, effetto eco profondo
+            currentStyle = { hue: 190, lineDensity: 90, glitchChance: 0.05, baseFreq: 320, noiseLevel: 20 };
+        } else if (mouthWidth < 13.8) { 
+            // TRISTEZZA: Monocromatico blu profondo, linee minimali sparse, drone sonoro cupo e lento
+            currentStyle = { hue: 225, lineDensity: 25, glitchChance: 0.0, baseFreq: 90, noiseLevel: 2 };
+        } else { 
+            // CALMA / NOIA STATICA: Codice Smeraldo stabile, frequenze rilassanti di background
+            currentStyle = { hue: 155, lineDensity: 45, glitchChance: 0.01, baseFreq: 147, noiseLevel: 8 };
+        }
+
+        // Modulazione dei parametri del sintetizzatore fantascientifico in tempo reale
+        if (audioCtx) {
+            carrierOsc.frequency.setTargetAtTime(currentStyle.baseFreq + (mouthOpen * 12), audioCtx.currentTime, 0.1);
+            modulatorOsc.frequency.setTargetAtTime(4 + (eyeOpen * 6), audioCtx.currentTime, 0.1);
+            modGain.gain.setTargetAtTime(currentStyle.noiseLevel * 4, audioCtx.currentTime, 0.1);
+        }
+
+        // Mappatura dei nodi cibernetici sullo schermo (Inversione asse X per specchio naturale)
+        dataNodes = CYBER_MAP.map(index => {
+            let glitchX = (Math.random() - 0.5) * (currentStyle.glitchChance * 150);
+            let glitchY = (Math.random() - 0.5) * (currentStyle.glitchChance * 150);
+            return {
+                x: (1 - lm[index].x) * canvas.width + glitchX,
+                y: lm[index].y * canvas.height + glitchY
+            };
+        });
+    }
+
+    // Renderizzatore ad alta tecnologia (Estetica Cyber-Plexus & Data Visualization)
+    function renderCyberSpace() {
+        // Fondale semi-permanente ad accumulo per l'effetto persistenza dei monitor quantistici
+        ctx.fillStyle = 'rgba(2, 2, 4, 0.12)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        const nodesLength = dataNodes.length;
+
+        if (nodesLength > 0) {
+            // DISEGNO DELLE CONNESSIONI DI RETE NEURALE (Plexus Effect)
+            ctx.lineWidth = 0.8;
+            for (let i = 0; i < nodesLength; i++) {
+                for (let j = i + 1; j < nodesLength; j++) {
+                    let dist = Math.hypot(dataNodes[i].x - dataNodes[j].x, dataNodes[i].y - dataNodes[j].y);
+                    
+                    // Se i nodi del volto sono vicini alla soglia impostata dall'emozione, traccia una linea dati
+                    if (dist < currentStyle.lineDensity) {
+                        let opacity = (1 - (dist / currentStyle.lineDensity)) * 0.4;
+                        ctx.strokeStyle = `hsla(${currentStyle.hue}, 100%, 60%, ${opacity})`;
+                        ctx.beginPath();
+                        ctx.moveTo(dataNodes[i].x, dataNodes[j].y);
+                        ctx.lineTo(dataNodes[j].x, dataNodes[i].y); // Incrocio matematico per l'effetto iper-tech
+                        ctx.stroke();
+                    }
+                }
+            }
+
+            // DISEGNO DEI NODI HARDWARE (Punti dati luminosi)
+            for (let i = 0; i < nodesLength; i++) {
+                ctx.fillStyle = `hsla(${currentStyle.hue}, 100%, 70%, 0.8)`;
+                ctx.fillRect(dataNodes[i].x - 1, dataNodes[j = i].y - 1, 2, 2); // Nodi quadrati stile microchip
+                
+                // Effetto anomalie/glitch grafici casuali controllati dall'Ira o dalla Sorpresa
+                if (Math.random() < currentStyle.glitchChance * 0.1) {
+                    ctx.fillStyle = `rgba(255, 255, 255, 0.7)`;
+                    ctx.fillRect(Math.random() * canvas.width, dataNodes[i].y, Math.random() * 100, 1);
+                }
+            }
+        }
+
+        requestAnimationFrame(renderCyberSpace);
+    }
+</script>
+</body>
+</html>
